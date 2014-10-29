@@ -1,9 +1,19 @@
 #!/usr/bin/python
+"""
+Display in a curse windows irq/s rate
 
+
+Author : Sebastien Wacquiez <sw@enix.org>
+"""
 import os
 import re
 import time
+import curses
+import select
+import sys
+import errno
 
+DELAY=200
 intrfile="/proc/interrupts"
 
 
@@ -20,6 +30,8 @@ class IrqStats(object):
         tmp = file(self.filename).read().split("\n")[0]
         tmp = re.sub(" +", " ", tmp)
         self.cpucount = len(tmp.strip().split())
+        self.scroll = 0
+        self.hscroll = 0
     
     def gather(self):        
         data = file(self.filename).read()
@@ -56,11 +68,65 @@ class IrqStats(object):
         for k in sorted(self.stats.keys()):
             v = self.stats[k]
             print "%s\t"%k, "\t".join(v["rate"]), "\t",v["desc"]
-      
 
-irq = IrqStats(intrfile)
-while True:
-    irq.gather()
-    irq.print_stats()
-    time.sleep(0.2)
+    def curses_keypress(self, key):
+        if key == curses.KEY_UP:
+            self.scroll = max(0, self.scroll + 1)
+        elif key == curses.KEY_DOWN:
+            self.scroll = max(0, self.scroll - 1)
+        elif key == curses.KEY_LEFT:
+            self.hscroll = max(0, self.hscroll + 1)
+        elif key == curses.KEY_RIGHT:
+            self.hscroll = max(0, self.hscroll - 1)
+           
+
+    def curses_stats(self, win):
+        if not self.stats:
+            return
+        win.erase()
+        height, width = win.getmaxyx()
+        start = 0 + self.scroll
+        stop = start + height - 1
+        hstart = 0 + self.hscroll
+        hstop = hstart + width - 2
+        win.addstr(0,0, ("     " + "".join([ "% 7s"%("CPU%s"%i) for i in range(self.cpucount) ]))[hstart:hstop], curses.A_REVERSE)
+        i = 1
+        for k in sorted(self.stats.keys())[start:stop]:
+            v = self.stats[k]
+            win.addstr(i, 1, ("% 4s"%k +  "".join([ "% 7s"%r for r in v["rate"]]) + "  " + v["desc"])[hstart:hstop])
+            i += 1
+        win.refresh()
+
+
+              
+def run_irqtop(win):
+    irq = IrqStats(intrfile)
+    curses.curs_set(0)
+    curses.noecho()
+    win.keypad(1)
+    win.nodelay(1)
+    poll = select.poll()
+    poll.register(sys.stdin.fileno(), select.POLLIN|select.POLLPRI)
+    while True:
+        irq.gather()
+        try:
+            events = poll.poll(DELAY)
+        except select.error as e:
+            if e.args and e.args[0] == errno.EINTR:
+                events = []
+            else:
+                raise
+        for (fd, event) in events:
+            if event & (select.POLLERR | select.POLLHUP):
+                sys.exit(1)
+            if fd == sys.stdin.fileno():
+                try:
+                    key = win.getch()
+                    irq.curses_keypress(key)
+                except curses.ERR:
+                    pass
+        irq.curses_stats(win)
+
     
+
+curses.wrapper(run_irqtop)
