@@ -71,9 +71,9 @@ class IrqStats(object):
 
     def curses_keypress(self, key):
         if key == curses.KEY_UP:
-            self.scroll = max(0, self.scroll + 1)
-        elif key == curses.KEY_DOWN:
             self.scroll = max(0, self.scroll - 1)
+        elif key == curses.KEY_DOWN:
+            self.scroll = max(0, self.scroll + 1)
         elif key == curses.KEY_LEFT:
             self.hscroll = max(0, self.hscroll + 1)
         elif key == curses.KEY_RIGHT:
