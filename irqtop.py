@@ -13,7 +13,7 @@ import select
 import sys
 import errno
 
-DELAY=200
+DELAY=1000
 intrfile="/proc/interrupts"
 
 
@@ -89,11 +89,14 @@ class IrqStats(object):
         stop = start + height - 1
         hstart = 0 + self.hscroll
         hstop = hstart + width - 2
-        win.addstr(0,0, ("     " + "".join([ "% 7s"%("CPU%s"%i) for i in range(self.cpucount) ]))[hstart:hstop], curses.A_REVERSE)
+        win.addstr(0,0, ("     " + "".join([ "% 7s"%("CPU%s"%i) for i in range(self.cpucount)] + [ "% 7s"%"TOTAL" ]))[hstart:hstop], curses.A_REVERSE)
         i = 1
         for k in sorted(self.stats.keys())[start:stop]:
             v = self.stats[k]
-            win.addstr(i, 1, ("% 4s"%k +  "".join([ "% 7s"%r for r in v["rate"]]) + "  " + v["desc"])[hstart:hstop])
+            v["rate"].append("%s"%sum([long(val) for val in v["rate"]]))
+            win.addstr(i, 1, ("% 4s"%k +  "".join(
+                [ "% 7s"%r for r in v["rate"]])
+                + "  " + v["desc"])[hstart:hstop])
             i += 1
         win.refresh()
 
@@ -107,8 +110,9 @@ def run_irqtop(win):
     win.nodelay(1)
     poll = select.poll()
     poll.register(sys.stdin.fileno(), select.POLLIN|select.POLLPRI)
+    irq.gather()
+    irq.curses_stats(win)
     while True:
-        irq.gather()
         try:
             events = poll.poll(DELAY)
         except select.error as e:
@@ -125,6 +129,7 @@ def run_irqtop(win):
                     irq.curses_keypress(key)
                 except curses.ERR:
                     pass
+        irq.gather()
         irq.curses_stats(win)
 
     
